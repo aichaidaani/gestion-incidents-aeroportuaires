@@ -39,3 +39,4 @@ public class Incident {
     public void setStatut(String statut) { this.statut = statut; }
     public void setAssignedTo(String assignedTo) { this.assignedTo = assignedTo; }
 }
+
