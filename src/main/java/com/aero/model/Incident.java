@@ -1,7 +1,6 @@
 package com.aero.model;
 
 import jakarta.persistence.*;
-
 import javafx.beans.property.*;
 
 @Entity
@@ -19,32 +18,47 @@ public class Incident {
     private String assignedTo;
     private String rapport;
 
-    // 🔒 Transient = ignoré par Hibernate
-    private transient final IntegerProperty idProperty = new SimpleIntegerProperty();
-    private transient final StringProperty descriptionProperty = new SimpleStringProperty();
-    private transient final StringProperty graviteProperty = new SimpleStringProperty();
-    private transient final StringProperty localisationProperty = new SimpleStringProperty();
-    private transient final StringProperty statutProperty = new SimpleStringProperty();
-    private transient final StringProperty assignedToProperty = new SimpleStringProperty();
-    private transient final StringProperty rapportProperty = new SimpleStringProperty();
+    // Propriétés JavaFX (ignorées par Hibernate)
+    @Transient
+    private final IntegerProperty idProperty = new SimpleIntegerProperty();
+    @Transient
+    private final StringProperty descriptionProperty = new SimpleStringProperty();
+    @Transient
+    private final StringProperty graviteProperty = new SimpleStringProperty();
+    @Transient
+    private final StringProperty localisationProperty = new SimpleStringProperty();
+    @Transient
+    private final StringProperty statutProperty = new SimpleStringProperty();
+    @Transient
+    private final StringProperty assignedToProperty = new SimpleStringProperty();
+    @Transient
+    private final StringProperty rapportProperty = new SimpleStringProperty();
 
     // === Constructeurs ===
-    public Incident() {}
+    public Incident() {
+        bindProperties();
+    }
 
     public Incident(String description, String gravite, String localisation, String statut) {
         this.description = description;
         this.gravite = gravite;
         this.localisation = localisation;
         this.statut = statut;
-
-        this.descriptionProperty.set(description);
-        this.graviteProperty.set(gravite);
-        this.localisationProperty.set(localisation);
-        this.statutProperty.set(statut);
+        bindProperties();
     }
 
-    // === Hibernate : Getters/Setters ===
+    // === Liaison JavaFX <-> champs ===
+    private void bindProperties() {
+        idProperty.addListener((obs, oldVal, newVal) -> this.id = newVal.intValue());
+        descriptionProperty.addListener((obs, oldVal, newVal) -> this.description = newVal);
+        graviteProperty.addListener((obs, oldVal, newVal) -> this.gravite = newVal);
+        localisationProperty.addListener((obs, oldVal, newVal) -> this.localisation = newVal);
+        statutProperty.addListener((obs, oldVal, newVal) -> this.statut = newVal);
+        assignedToProperty.addListener((obs, oldVal, newVal) -> this.assignedTo = newVal);
+        rapportProperty.addListener((obs, oldVal, newVal) -> this.rapport = newVal);
+    }
 
+    // === Getters / Setters Hibernate ===
     public int getId() {
         return id;
     }
@@ -108,34 +122,25 @@ public class Incident {
         this.rapportProperty.set(rapport);
     }
 
-    // === JavaFX Property Getters ===
+    // === Propriétés JavaFX ===
+    public IntegerProperty idProperty() { return idProperty; }
+    public StringProperty descriptionProperty() { return descriptionProperty; }
+    public StringProperty graviteProperty() { return graviteProperty; }
+    public StringProperty localisationProperty() { return localisationProperty; }
+    public StringProperty statutProperty() { return statutProperty; }
+    public StringProperty assignedToProperty() { return assignedToProperty; }
+    public StringProperty rapportProperty() { return rapportProperty; }
 
-    public IntegerProperty idProperty() {
-        return idProperty;
-    }
-
-    public StringProperty descriptionProperty() {
-        return descriptionProperty;
-    }
-
-    public StringProperty graviteProperty() {
-        return graviteProperty;
-    }
-
-    public StringProperty localisationProperty() {
-        return localisationProperty;
-    }
-
-    public StringProperty statutProperty() {
-        return statutProperty;
-    }
-
-    public StringProperty assignedToProperty() {
-        return assignedToProperty;
-    }
-
-    public StringProperty rapportProperty() {
-        return rapportProperty;
+    // === Méthode pour réinitialiser les propriétés après un chargement Hibernate ===
+    @PostLoad
+    public void syncPropertiesAfterLoad() {
+        idProperty.set(id);
+        descriptionProperty.set(description);
+        graviteProperty.set(gravite);
+        localisationProperty.set(localisation);
+        statutProperty.set(statut);
+        assignedToProperty.set(assignedTo);
+        rapportProperty.set(rapport);
     }
 }
 

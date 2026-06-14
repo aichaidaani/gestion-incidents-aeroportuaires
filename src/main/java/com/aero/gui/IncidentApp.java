@@ -1,227 +1,300 @@
 package com.aero.gui;
 
 import com.aero.dao.IncidentDAO;
-import com.aero.chatbot.TTS;
-
 import com.aero.model.Incident;
-import com.aero.chatbot.Chatbot; // Assure-toi d’avoir cette classe
-
+import com.aero.chat.ChatbotPane;
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.Node;
 import javafx.scene.control.*;
-import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.*;
 import javafx.stage.Stage;
 
-import java.util.List;
-
 public class IncidentApp extends Application {
-    private VBox mainLayout;
-    private Scene scene;
     private Stage primaryStage;
+    private Scene scene;
+    private VBox mainLayout;
+
+    private TableView<Incident> tableTousIncidents;
+    private TableView<Incident> tableTechnicien;
+    private String equipeTechnicien;
+
+    // Champs réutilisables pour ajouter/modifier
+    private TextField desc = new TextField();
+    private TextField grav = new TextField();
+    private TextField loc = new TextField();
+    private TextField stat = new TextField();
+    private ComboBox<String> equipeBox = new ComboBox<>();
+    private Button addOrUpdateBtn = new Button("Ajouter");
+
+    private Incident incidentSelectionne = null;
 
     @Override
     public void start(Stage stage) {
         this.primaryStage = stage;
-        afficherEcranConnexion();
+        afficherConnexion();
     }
 
-    private void afficherEcranConnexion() {
-        primaryStage.setTitle("Connexion");
-
+    // Page de connexion
+    private void afficherConnexion() {
         Label userLabel = new Label("Utilisateur:");
         TextField userField = new TextField();
 
         Label passLabel = new Label("Mot de passe:");
         PasswordField passField = new PasswordField();
 
+        // ComboBox pour choisir l'équipe si technicien
+        ComboBox<String> equipeCombo = new ComboBox<>();
+        equipeCombo.getItems().setAll("équipe alpha", "équipe beta", "équipe gamma");
+        equipeCombo.setPromptText("Sélectionnez votre équipe");
+        equipeCombo.setVisible(false);
+
+        userField.textProperty().addListener((obs, oldText, newText) -> {
+            equipeCombo.setVisible(newText.equals("tech"));
+        });
+
         Button loginBtn = new Button("Connexion");
         Button quitterBtn = new Button("Quitter");
 
-        VBox loginLayout = new VBox(10, userLabel, userField, passLabel, passField, loginBtn, quitterBtn);
-        loginLayout.setPadding(new Insets(20));
-        loginLayout.setAlignment(Pos.CENTER);
+        VBox layout = new VBox(10, userLabel, userField, passLabel, passField, equipeCombo, loginBtn, quitterBtn);
+        layout.setPadding(new Insets(20));
+        layout.setAlignment(Pos.CENTER);
 
-        scene = new Scene(loginLayout, 400, 300);
+        scene = new Scene(layout, 450, 350);
         primaryStage.setScene(scene);
+        primaryStage.setTitle("Connexion");
         primaryStage.show();
 
         loginBtn.setOnAction(e -> {
-            String user = userField.getText();
-            String pass = passField.getText();
+            String user = userField.getText().trim();
+            String pass = passField.getText().trim();
 
             if (user.equals("superviseur") && pass.equals("admin123")) {
-                afficherInterfaceSelonRole("SUPERVISEUR");
+                afficherInterface("SUPERVISEUR");
             } else if (user.equals("agent") && pass.equals("agent123")) {
-                afficherInterfaceSelonRole("AGENT");
+                afficherInterface("AGENT");
             } else if (user.equals("tech") && pass.equals("tech123")) {
-                afficherInterfaceSelonRole("TECHNICIEN");
+                String equipe = equipeCombo.getValue();
+                if (equipe == null) {
+                    new Alert(Alert.AlertType.WARNING, "Sélectionnez votre équipe.").showAndWait();
+                    return;
+                }
+                afficherInterface("TECHNICIEN", equipe);
             } else {
-                Alert alert = new Alert(AlertType.ERROR, "Utilisateur ou mot de passe incorrect.");
-                alert.showAndWait();
+                new Alert(Alert.AlertType.ERROR, "Utilisateur ou mot de passe incorrect.").showAndWait();
             }
         });
 
         quitterBtn.setOnAction(e -> primaryStage.close());
     }
 
-    private void afficherInterfaceSelonRole(String role) {
+    // Affichage des interfaces
+    private void afficherInterface(String role) {
+        afficherInterface(role, null);
+    }
+
+    private void afficherInterface(String role, String equipe) {
         mainLayout = new VBox(10);
         mainLayout.setPadding(new Insets(15));
+        mainLayout.setStyle("-fx-background-color: linear-gradient(to bottom, #87CEFA, #B0E0E6);");
 
-        if (role.equals("AGENT")) {
-            mainLayout.getChildren().add(creerFormulaireAjout());
-        } else if (role.equals("TECHNICIEN")) {
-            mainLayout.getChildren().add(creerTableIncidentsAffectes("Équipe Alpha"));
-        } else if (role.equals("SUPERVISEUR")) {
+        if ("AGENT".equals(role)) {
             mainLayout.getChildren().addAll(
-                creerFormulaireAjout(),
-                creerTableTousIncidents(),
-                creerBoutonStatistiques(),
-                creerZoneRapport(),     // ✅ Ajout du champ rapport
-                creerChatbot()          // ✅ Ajout du chatbot
+                    creerFormulaireAjout(),
+                    creerTableTousIncidents(),
+                    creerBoutonsModifierSupprimer(),
+                    creerBoutonDeconnexion()
+            );
+        } else if ("SUPERVISEUR".equals(role)) {
+            mainLayout.getChildren().addAll(
+                    creerFormulaireAjout(),
+                    creerTableTousIncidents(),
+                    creerBoutonsModifierSupprimer(),
+                    creerStatistiques(),
+                    creerRapport(),
+                    creerChatbot(),
+                    creerBoutonDeconnexion()
+            );
+        } else if ("TECHNICIEN".equals(role)) {
+            this.equipeTechnicien = equipe.toLowerCase();
+            mainLayout.getChildren().addAll(
+                    creerTableTechnicien(this.equipeTechnicien),
+                    creerBoutonDeconnexion()
             );
         }
 
         scene.setRoot(mainLayout);
     }
 
-
-
+    // Formulaire Ajouter/Modifier
     private Node creerFormulaireAjout() {
-        TextField desc = new TextField(); desc.setPromptText("Description");
-        TextField grav = new TextField(); grav.setPromptText("Gravité");
-        TextField loc = new TextField(); loc.setPromptText("Localisation");
-        TextField stat = new TextField(); stat.setPromptText("Statut");
-        Button add = new Button("Ajouter");
+        desc.setPromptText("Description");
+        grav.setPromptText("Gravité");
+        loc.setPromptText("Localisation");
+        stat.setPromptText("Statut");
 
-        add.setOnAction(e -> {
-            Incident incident = new Incident(
-                desc.getText(), grav.getText(), loc.getText(), stat.getText()
-            );
+        equipeBox.getItems().setAll("équipe alpha", "équipe beta", "équipe gamma");
+        equipeBox.setPromptText("Équipe assignée");
 
-            System.out.println("Ajouté : " + incident.getDescription() + ", " + incident.getGravite() + ", " + incident.getLocalisation());
-
-            IncidentDAO.ajouterIncident(incident);
-
-            // ✅ Rafraîchir le tableau s’il est visible
-            if (tableTousIncidents != null) {
-                tableTousIncidents.getItems().setAll(IncidentDAO.getAllIncidents());
+        addOrUpdateBtn.setText("Ajouter");
+        addOrUpdateBtn.setOnAction(e -> {
+            if (equipeBox.getValue() == null) {
+                new Alert(Alert.AlertType.WARNING, "Sélectionnez une équipe.").showAndWait();
+                return;
             }
 
-            // Réinitialiser les champs
-            desc.clear(); grav.clear(); loc.clear(); stat.clear();
+            if (incidentSelectionne == null) {
+                Incident incident = new Incident(
+                        desc.getText(), grav.getText(), loc.getText(), stat.getText()
+                );
+                incident.setAssignedTo(equipeBox.getValue().toLowerCase());
+                IncidentDAO.ajouterIncident(incident);
+                new Alert(Alert.AlertType.INFORMATION, "Incident ajouté.").showAndWait();
+            } else {
+                incidentSelectionne.setDescription(desc.getText());
+                incidentSelectionne.setGravite(grav.getText());
+                incidentSelectionne.setLocalisation(loc.getText());
+                incidentSelectionne.setStatut(stat.getText());
+                incidentSelectionne.setAssignedTo(equipeBox.getValue().toLowerCase());
+                IncidentDAO.modifierIncident(incidentSelectionne);
+                new Alert(Alert.AlertType.INFORMATION, "Incident modifié.").showAndWait();
+                incidentSelectionne = null;
+                addOrUpdateBtn.setText("Ajouter");
+            }
 
-            Alert alert = new Alert(Alert.AlertType.INFORMATION, "Incident ajouté !");
-            alert.showAndWait();
+            actualiserTables();
+            desc.clear(); grav.clear(); loc.clear(); stat.clear(); equipeBox.setValue(null);
         });
 
-        return new VBox(5, new Label("➕ Ajouter un incident :"), desc, grav, loc, stat, add);
+        return new VBox(5, new Label("➕ Ajouter / Modifier un incident :"),
+                desc, grav, loc, stat, equipeBox, addOrUpdateBtn);
     }
 
+    // Boutons Modifier/Supprimer
+    private Node creerBoutonsModifierSupprimer() {
+        Button modifierBtn = new Button("Modifier");
+        Button supprimerBtn = new Button("Supprimer");
 
+        modifierBtn.setOnAction(e -> {
+            incidentSelectionne = tableTousIncidents.getSelectionModel().getSelectedItem();
+            if (incidentSelectionne != null) {
+                desc.setText(incidentSelectionne.getDescription());
+                grav.setText(incidentSelectionne.getGravite());
+                loc.setText(incidentSelectionne.getLocalisation());
+                stat.setText(incidentSelectionne.getStatut());
+                equipeBox.setValue(incidentSelectionne.getAssignedTo());
+                addOrUpdateBtn.setText("Enregistrer");
+            }
+        });
+
+        supprimerBtn.setOnAction(e -> {
+            Incident incident = tableTousIncidents.getSelectionModel().getSelectedItem();
+            if (incident != null) {
+                IncidentDAO.supprimerIncident(incident);
+                actualiserTables();
+                new Alert(Alert.AlertType.INFORMATION, "Incident supprimé.").showAndWait();
+            }
+        });
+
+        return new HBox(10, modifierBtn, supprimerBtn);
+    }
+
+    // Actualiser les tables
+    private void actualiserTables() {
+        if (tableTousIncidents != null) {
+            tableTousIncidents.getItems().setAll(IncidentDAO.getAllIncidents());
+        }
+        if (tableTechnicien != null && equipeTechnicien != null) {
+            tableTechnicien.getItems().setAll(IncidentDAO.getIncidentsByEquipe(equipeTechnicien));
+        }
+    }
+
+    // Table Tous Incidents
     private Node creerTableTousIncidents() {
-        tableTousIncidents = creerTableView(); // 🆕 ici
-        tableTousIncidents.getItems().addAll(IncidentDAO.getAllIncidents());
+        tableTousIncidents = creerTableView();
+        tableTousIncidents.getItems().setAll(IncidentDAO.getAllIncidents());
         return new VBox(new Label("📋 Tous les incidents :"), tableTousIncidents);
     }
 
+    // Table Technicien
+    private Node creerTableTechnicien(String equipe) {
+        tableTechnicien = creerTableView();
+        tableTechnicien.getItems().setAll(IncidentDAO.getIncidentsByEquipe(equipe));
+        return new VBox(new Label("📋 Incidents affectés à : " + equipe), tableTechnicien);
+    }
 
+    // Créer TableView générique
     private TableView<Incident> creerTableView() {
         TableView<Incident> table = new TableView<>();
 
-        TableColumn<Incident, Integer> idCol = new TableColumn<>("ID");
-        idCol.setCellValueFactory(new PropertyValueFactory<>("id"));
+        TableColumn<Incident, Integer> id = new TableColumn<>("ID");
+        id.setCellValueFactory(new PropertyValueFactory<>("id"));
 
         TableColumn<Incident, String> descCol = new TableColumn<>("Description");
         descCol.setCellValueFactory(new PropertyValueFactory<>("description"));
 
-        TableColumn<Incident, String> gravCol = new TableColumn<>("Gravité");
-        gravCol.setCellValueFactory(new PropertyValueFactory<>("gravite"));
+        TableColumn<Incident, String> grav = new TableColumn<>("Gravité");
+        grav.setCellValueFactory(new PropertyValueFactory<>("gravite"));
 
-        TableColumn<Incident, String> locCol = new TableColumn<>("Localisation");
-        locCol.setCellValueFactory(new PropertyValueFactory<>("localisation"));
+        TableColumn<Incident, String> loc = new TableColumn<>("Localisation");
+        loc.setCellValueFactory(new PropertyValueFactory<>("localisation"));
 
-        TableColumn<Incident, String> statutCol = new TableColumn<>("Statut");
-        statutCol.setCellValueFactory(new PropertyValueFactory<>("statut"));
+        TableColumn<Incident, String> stat = new TableColumn<>("Statut");
+        stat.setCellValueFactory(new PropertyValueFactory<>("statut"));
 
-        table.getColumns().addAll(idCol, descCol, gravCol, locCol, statutCol);
+        TableColumn<Incident, String> equipe = new TableColumn<>("Équipe");
+        equipe.setCellValueFactory(new PropertyValueFactory<>("assignedTo"));
 
+        table.getColumns().addAll(id, descCol, grav, loc, stat, equipe);
         return table;
     }
 
-
-    private Node creerBoutonStatistiques() {
-        Button statsBtn = new Button("📊 Voir statistiques");
-        statsBtn.setOnAction(e -> {
+    // Statistiques
+    private Node creerStatistiques() {
+        Button btn = new Button("📊 Statistiques");
+        btn.setOnAction(e -> {
             long graves = IncidentDAO.compterIncidentsParGravite("Grave");
             long mineurs = IncidentDAO.compterIncidentsParGravite("Mineure");
-            Alert alert = new Alert(AlertType.INFORMATION);
-            alert.setTitle("Statistiques");
-            alert.setHeaderText("Bilan des incidents");
-            alert.setContentText("Graves : " + graves + "\nMineurs : " + mineurs);
-            alert.show();
+            new Alert(Alert.AlertType.INFORMATION,
+                    "Graves : " + graves + "\nMineurs : " + mineurs).showAndWait();
         });
-        return statsBtn;
+        return btn;
     }
 
-    private Node creerZoneRapport() {
-        TextArea rapportArea = new TextArea();
-        rapportArea.setPromptText("Écrire un rapport ici...");
-        rapportArea.setPrefRowCount(5);
+    // Rapport
+    private Node creerRapport() {
+        TextArea area = new TextArea();
+        area.setPromptText("Écrire un rapport ici...");
 
-        Button envoyerBtn = new Button("Envoyer le rapport");
-        envoyerBtn.setOnAction(e -> {
-            String rapport = rapportArea.getText().trim();
-            if (rapport.isEmpty()) {
-                Alert alert = new Alert(AlertType.WARNING, "Le rapport ne peut pas être vide.");
-                alert.showAndWait();
+        Button envoyer = new Button("Envoyer");
+        envoyer.setOnAction(e -> {
+            if (area.getText().trim().isEmpty()) {
+                new Alert(Alert.AlertType.WARNING, "Rapport vide.").showAndWait();
                 return;
             }
-            Alert alert = new Alert(AlertType.INFORMATION, "Rapport envoyé avec succès !");
-            alert.showAndWait();
-            rapportArea.clear();
+            new Alert(Alert.AlertType.INFORMATION, "Rapport envoyé.").showAndWait();
+            area.clear();
         });
 
-        return new VBox(5, new Label("📝 Rapport du superviseur :"), rapportArea, envoyerBtn);
+        return new VBox(5, new Label("📝 Rapport :"), area, envoyer);
     }
 
+    // Chatbot
     private Node creerChatbot() {
-        Label titre = new Label("🤖 Chatbot - Posez votre question");
-        TextArea zoneChat = new TextArea();
-        zoneChat.setEditable(false);
-        zoneChat.setWrapText(true);
+        return new ChatbotPane();
+    }
 
-        TextField champQuestion = new TextField();
-        champQuestion.setPromptText("Ex : Comment déclarer un incident ?");
-        Button boutonEnvoyer = new Button("Envoyer");
-
-        boutonEnvoyer.setOnAction(e -> {
-            String question = champQuestion.getText();
-            zoneChat.appendText("Vous : " + question + "\n");
-
-            String reponse = Chatbot.repondre(question);
-            zoneChat.appendText("Bot : " + reponse + "\n");
-            TTS.parler(reponse); // 🗣️ Lire la réponse avec la voix
-
-
-            if (reponse.startsWith("Je recherche")) {
-                List<Incident> resultats = IncidentDAO.chercherIncidentsSimilaires(question);
-                for (Incident i : resultats) {
-                    zoneChat.appendText("Incident similaire : " + i.getDescription() + " (Statut : " + i.getStatut() + ")\n");
-                }
-            }
-
-            champQuestion.clear();
-        });
-
-        VBox layout = new VBox(10, titre, zoneChat, champQuestion, boutonEnvoyer);
-        layout.setPadding(new Insets(10));
-        return layout;
+    // Bouton de déconnexion
+    private Node creerBoutonDeconnexion() {
+        Button deconnexionBtn = new Button("Se déconnecter");
+        deconnexionBtn.setOnAction(e -> afficherConnexion());
+        HBox hbox = new HBox(deconnexionBtn);
+        hbox.setAlignment(Pos.CENTER_RIGHT);
+        hbox.setPadding(new Insets(10, 0, 0, 0));
+        return hbox;
     }
 
     public static void main(String[] args) {
